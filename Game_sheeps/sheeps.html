@@ -254,7 +254,7 @@
                     <div id="best">best 0.0s</div>
                 </div>
             </div>
-            <canvas id="game" width="1200" height="560" tabindex="0"></canvas>
+            <canvas id="game" width="900" height="560" tabindex="0"></canvas>
         </div>
 
         <aside class="sidebar">
@@ -274,6 +274,9 @@
 
                 <dt><kbd>H</kbd></dt>
                 <dd>Show the hitboxes</dd>
+
+                <dt><kbd>M</kbd></dt>
+                <dd>Mute the sound</dd>
             </dl>
             <p class="goal">
                 Sheep charge in from the corners. Stab them before they reach you
@@ -307,15 +310,20 @@
 
             // Dash on Shift. The player is untouchable while dashing,
             // so it is the answer to anything the pitchfork cannot stop.
-            dashSpeed: 10,     // speed during the dash
-            dashMs: 100,    // how long the dash lasts
+            dashSpeed: 15,     // speed during the dash
+            dashMs: 140,    // how long the dash lasts
             dashCooldown: 900,    // wait before the next dash
 
             // Red sheep: cannot be killed, only dodged.
-            redAfter: 20,      // seconds before the first one can appear
-            redChance: 0.05,    // share of sheep that are red
+            redAfter: 8,      // seconds before the first one can appear
+            redChance: 0.2,    // share of sheep that are red
             redSizeMul: 1.35,   // bigger than a normal sheep
             redSpeedMul: 0.6,    // and slower
+            warnFrames: 40,     // warning shown in the corner first (~0.65s)
+
+            // Feedback
+            shakeMs: 150,    // how long the screen shakes after a hit
+            shakeAmount: 7,      // how far it moves, in pixels
 
             startHearts: 3,      // hearts at the start of a run
             maxHearts: 3,      // apples stop healing above this
@@ -340,7 +348,8 @@
         const IMAGE_FILES = {
             human: 'images/lp_farmer.png',
             sheep: 'images/lp_sheep.png',
-            apple: 'images/lp_apple.png'
+            apple: 'images/lp_apple.png',
+            lose: 'images/lose_screen.png'   // shown on the game over screen
         };
 
         /* =========================================================
@@ -384,7 +393,8 @@
         const IMAGES = {
             human: loadImage(IMAGE_FILES.human),
             sheep: loadImage(IMAGE_FILES.sheep),
-            apple: loadImage(IMAGE_FILES.apple)
+            apple: loadImage(IMAGE_FILES.apple),
+            lose: loadImage(IMAGE_FILES.lose)
         };
 
         // A recoloured copy of a sprite: white for the damage blink,
@@ -404,6 +414,55 @@
 
             img.tintCache[color] = c;
             return c;
+        }
+
+        /* =========================================================
+           2b. SOUND
+           Files live next to this page in a sounds folder.
+           Each sound keeps a small pool of ready players, so several
+           sheep dying at once still overlap without building a new
+           audio object every time.
+           ========================================================= */
+        const SOUND_FILES = {
+            sheep: { src: 'sounds/sheep.mp3', volume: 0.5 },   // a sheep is stopped
+            apple: { src: 'sounds/apple.mp3', volume: 0.6 },   // apple picked up
+            hit: { src: 'sounds/hit.mp3', volume: 0.7 }    // the player is hit
+        };
+
+        const SOUND_POOL_SIZE = 4;   // how many of the same sound can overlap
+        const SOUND_GAP_MS = 45;  // ignore repeats fired closer than this
+
+        function loadSound({ src, volume }) {
+            const pool = [];
+            for (let i = 0; i < SOUND_POOL_SIZE; i++) {
+                const audio = new Audio(src);
+                audio.preload = 'auto';
+                audio.volume = volume;
+                pool.push(audio);
+            }
+            return { pool, next: 0, lastPlayed: 0 };
+        }
+
+        const SOUNDS = {
+            sheep: loadSound(SOUND_FILES.sheep),
+            apple: loadSound(SOUND_FILES.apple),
+            hit: loadSound(SOUND_FILES.hit)
+        };
+
+        let muted = false;
+
+        function playSound(name) {
+            if (muted) return;
+            const sound = SOUNDS[name];
+            const now = Date.now();
+            if (now - sound.lastPlayed < SOUND_GAP_MS) return;   // avoid machine-gun audio
+            sound.lastPlayed = now;
+
+            const audio = sound.pool[sound.next];
+            sound.next = (sound.next + 1) % sound.pool.length;   // take turns
+            audio.currentTime = 0;
+            // Browsers refuse to play before the first click. Nothing to fix, just skip.
+            audio.play().catch(() => { });
         }
 
         /* =========================================================
@@ -440,6 +499,8 @@
         let apples = [];
         let puffs = [];        // small effect when a sheep is removed
         let ghosts = [];       // fading copies of the player left by a dash
+        let warnings = [];     // corner markers shown before a red sheep
+        let shakeUntil = 0;    // the screen shakes while now is below this
         let started = false;   // the run begins on the first click or key press
         let alive = true;
         let startTime = 0;
@@ -451,6 +512,29 @@
         let showHitboxes = false;
 
         const mouse = { x: canvas.width / 2 + 100, y: canvas.height / 2 };
+
+        /* The best time is kept in the browser, so it survives a reload.
+           Some browsers block storage, hence the try / catch. */
+        const BEST_KEY = 'escape-the-sheep-best';
+
+        function loadBest() {
+            try {
+                return parseFloat(localStorage.getItem(BEST_KEY)) || 0;
+            } catch (e) {
+                return 0;
+            }
+        }
+
+        function saveBest(value) {
+            try {
+                localStorage.setItem(BEST_KEY, value.toFixed(1));
+            } catch (e) {
+                // storage is not available — the record simply lives for this session
+            }
+        }
+
+        best = loadBest();
+        bestEl.textContent = 'best ' + best.toFixed(1) + 's';
 
         /* =========================================================
            4. INPUT
@@ -471,6 +555,7 @@
             startGame();
             if (e.code === 'KeyR') restart();
             if (e.code === 'KeyH') showHitboxes = !showHitboxes;
+            if (e.code === 'KeyM') muted = !muted;
             if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') tryDash();
             // Space and the arrows scroll the page by default — not here
             if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
@@ -529,22 +614,18 @@
             { x: canvas.width, y: canvas.height }
         ];
 
-        function spawnSheep() {
-            const c = corners[Math.floor(Math.random() * 4)];
-            const dx = player.x - c.x;
-            const dy = player.y - c.y;
+        // Creates the sheep itself, aimed at the player right now
+        function makeSheep(corner, red) {
+            const dx = player.x - corner.x;
+            const dy = player.y - corner.y;
             const len = Math.hypot(dx, dy);
-
-            // a red sheep shrugs off the pitchfork, so it only shows up
-            // once the player has had a moment to learn the basics
-            const red = survived > SETTINGS.redAfter && Math.random() < SETTINGS.redChance;
 
             const size = SETTINGS.sheepSize * (red ? SETTINGS.redSizeMul : 1);
             const speed = (SETTINGS.sheepSpeed + survived * SETTINGS.sheepAccel)
                 * (red ? SETTINGS.redSpeedMul : 1);
 
             sheep.push({
-                x: c.x, y: c.y,
+                x: corner.x, y: corner.y,
                 size: size,
                 hitbox: SETTINGS.sheepHitbox,
                 red: red,
@@ -552,6 +633,21 @@
                 vy: (dy / len) * speed,
                 angle: Math.atan2(dy, dx)   // the sheep faces where it runs
             });
+        }
+
+        function spawnSheep() {
+            const corner = corners[Math.floor(Math.random() * 4)];
+
+            // a red sheep shrugs off the pitchfork, so it only shows up
+            // once the player has had a moment to learn the basics
+            const red = survived > SETTINGS.redAfter && Math.random() < SETTINGS.redChance;
+
+            if (red) {
+                // the corner flashes first — a death should never feel unfair
+                warnings.push({ corner: corner, life: SETTINGS.warnFrames });
+            } else {
+                makeSheep(corner, false);
+            }
         }
 
         function spawnApple() {
@@ -583,6 +679,8 @@
             apples = [];
             puffs = [];
             ghosts = [];
+            warnings = [];
+            shakeUntil = 0;
             player.x = canvas.width / 2;
             player.y = canvas.height / 2;
             player.hp = SETTINGS.startHearts;
@@ -658,6 +756,13 @@
             appleTimer++;
             if (appleTimer >= SETTINGS.appleEvery) { spawnApple(); appleTimer = 0; }
 
+            // --- warnings turn into red sheep when they run out ---
+            for (const w of warnings) {
+                w.life--;
+                if (w.life <= 0) makeSheep(w.corner, true);
+            }
+            warnings = warnings.filter(w => w.life > 0);
+
             // --- move sheep and keep them facing their direction ---
             for (const s of sheep) {
                 s.x += s.vx;
@@ -665,22 +770,18 @@
                 s.angle = Math.atan2(s.vy, s.vx);
             }
 
-            // --- the pitchfork removes any sheep it touches, except the red ones ---
+            // --- one pass over the sheep: stab, then drop the ones that left ---
             sheep = sheep.filter(s => {
                 if (!s.red && isTouching(fork, s)) {
                     puffs.push({ x: s.x, y: s.y, life: 20 });
                     kills++;
                     killsEl.textContent = kills + ' sheep';
+                    playSound('sheep');
                     return false;   // drop this sheep from the list
                 }
-                return true;
+                return s.x > -150 && s.x < canvas.width + 150 &&
+                    s.y > -150 && s.y < canvas.height + 150;
             });
-
-            // --- drop the sheep that left the field ---
-            sheep = sheep.filter(s =>
-                s.x > -150 && s.x < canvas.width + 150 &&
-                s.y > -150 && s.y < canvas.height + 150
-            );
 
             // --- apples expire ---
             for (const a of apples) a.life--;
@@ -690,6 +791,7 @@
                 if (isTouching(player, a)) {
                     if (player.hp < SETTINGS.maxHearts) player.hp++;
                     a.life = 0;
+                    playSound('apple');
                     drawHearts();
                 }
             }
@@ -701,11 +803,14 @@
                     if (isTouching(player, s)) {
                         player.hp--;
                         player.invulnUntil = now + SETTINGS.invulnMs;
+                        shakeUntil = now + SETTINGS.shakeMs;
+                        playSound('hit');
                         drawHearts();
                         if (player.hp <= 0) {
                             alive = false;
                             if (survived > best) {
                                 best = survived;
+                                saveBest(best);
                                 bestEl.textContent = 'best ' + best.toFixed(1) + 's';
                             }
                         }
@@ -769,32 +874,76 @@
         }
 
         function drawField() {
+            // drawn a little larger than the canvas so the screen shake
+            // never reveals an empty edge
+            const m = 24;
             ctx.fillStyle = '#EFD9AE';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(-m, -m, canvas.width + m * 2, canvas.height + m * 2);
 
             ctx.strokeStyle = 'rgba(168, 90, 42, 0.13)';
             ctx.lineWidth = 2;
             for (let y = 34; y < canvas.height; y += 46) {
                 ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvas.width, y);
+                ctx.moveTo(-m, y);
+                ctx.lineTo(canvas.width + m, y);
                 ctx.stroke();
             }
         }
 
-        function centerText(big, small) {
+        // Pulsing marker in the corner a red sheep is about to charge from
+        function drawWarning(w) {
+            const c = w.corner;
+            const pulse = 0.3 + 0.3 * Math.sin(Date.now() / 70);
+
+            ctx.fillStyle = 'rgba(192, 57, 43, ' + pulse + ')';
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 54, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(192, 57, 43, 0.85)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 54, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // the exclamation mark is nudged inwards so it stays on screen
+            ctx.fillStyle = '#F3E0BD';
+            ctx.font = '700 30px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('!', c.x + (c.x === 0 ? 24 : -24), c.y + (c.y === 0 ? 26 : -26));
+            ctx.textBaseline = 'alphabetic';
+        }
+
+        // Two lines of text, centred around centerY
+        function centerText(big, small, centerY = canvas.height / 2) {
             ctx.textAlign = 'center';
             ctx.fillStyle = '#F5B455';
             ctx.font = '700 44px Fredoka, sans-serif';
-            ctx.fillText(big, canvas.width / 2, canvas.height / 2 - 6);
+            ctx.fillText(big, canvas.width / 2, centerY - 6);
 
             ctx.fillStyle = '#F3E0BD';
             ctx.font = '500 19px Fredoka, sans-serif';
-            ctx.fillText(small, canvas.width / 2, canvas.height / 2 + 32);
+            ctx.fillText(small, canvas.width / 2, centerY + 32);
         }
 
         function draw() {
+            const now = Date.now();
+
+            /* Screen shake: everything on the field is drawn shifted by a
+               random amount for a moment. The offset fades out, so the shake
+               settles instead of stopping dead. */
+            ctx.save();
+            if (now < shakeUntil) {
+                const power = SETTINGS.shakeAmount * ((shakeUntil - now) / SETTINGS.shakeMs);
+                ctx.translate((Math.random() - 0.5) * power * 2,
+                    (Math.random() - 0.5) * power * 2);
+            }
+
             drawField();
+
+            // ---- corner warnings ----
+            for (const w of warnings) drawWarning(w);
 
             // ---- apples ----
             for (const a of apples) {
@@ -839,7 +988,6 @@
             }
 
             // ---- player ----
-            const now = Date.now();
             const invuln = now < player.invulnUntil;
             const whitePhase = invuln && Math.floor(now / SETTINGS.blinkMs) % 2 === 0;
 
@@ -865,7 +1013,9 @@
                 ctx.stroke();
             }
 
-            // ---- overlays ----
+            ctx.restore();   // end of the shaken part
+
+            // ---- overlays, kept steady on top ----
             if (!started) {
                 ctx.fillStyle = 'rgba(62, 31, 18, 0.72)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -873,9 +1023,31 @@
             } else if (!alive) {
                 ctx.fillStyle = 'rgba(62, 31, 18, 0.82)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                centerText('The sheep win',
-                    'Survived ' + survived.toFixed(1) + 's · ' + kills +
-                    ' sheep stopped — press R to try again');
+
+                const summary = 'Survived ' + survived.toFixed(1) + 's · ' + kills +
+                    ' sheep stopped — press R to try again';
+                const art = IMAGES.lose;
+
+                if (art.ready) {
+                    /* Fit the picture without stretching it: take the smaller of the
+                       two scales, so it never grows past 45% of the height or 60%
+                       of the width, whatever the shape of the file. */
+                    const scale = Math.min(
+                        (canvas.height * 0.45) / art.height,
+                        (canvas.width * 0.60) / art.width
+                    );
+                    const w = art.width * scale;
+                    const h = art.height * scale;
+
+                    const gap = 26;
+                    const textHeight = 76;   // both lines together
+                    const top = (canvas.height - (h + gap + textHeight)) / 2;
+
+                    ctx.drawImage(art, (canvas.width - w) / 2, top, w, h);
+                    centerText('The sheep win', summary, top + h + gap + 24);
+                } else {
+                    centerText('The sheep win', summary);
+                }
             }
         }
 
