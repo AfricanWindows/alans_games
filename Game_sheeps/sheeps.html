@@ -578,11 +578,8 @@
             const now = Date.now();
             if (now < player.dashReadyAt) return;      // still cooling down
 
-            // dash where you run, or where you aim when standing still
-            const { dx, dy } = inputDirection();
-            player.dashAngle = (dx === 0 && dy === 0)
-                ? player.angle
-                : Math.atan2(dy, dx);
+            // always dash where the mouse points
+            player.dashAngle = player.angle;
 
             player.dashUntil = now + SETTINGS.dashMs;
             player.dashReadyAt = now + SETTINGS.dashCooldown;
