@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alan Zirkiev — Games</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bark: #3E1F12;
+            --wood: #A85A2A;
+            --wood-lt: #B96A32;
+            --ring: #E8912D;
+            --ring-lt: #F5B455;
+            --cream: #F3E0BD;
+            --leaf: #2E8B57;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 40px 24px 60px;
+            font-family: 'Fredoka', 'Trebuchet MS', sans-serif;
+            color: var(--cream);
+            background:
+                repeating-linear-gradient(90deg,
+                    rgba(0, 0, 0, 0.06) 0 2px, rgba(0, 0, 0, 0) 2px 26px),
+                linear-gradient(180deg, #4A2716 0%, #2B160C 100%);
+        }
+
+        .wrap {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        /* ---------- header ---------- */
+        header {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            padding-bottom: 26px;
+            margin-bottom: 34px;
+            border-bottom: 4px solid rgba(243, 224, 189, 0.16);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 40px;
+            font-weight: 700;
+            line-height: 1.05;
+            color: var(--ring-lt);
+            text-shadow: 4px 4px 0 var(--bark);
+        }
+
+        header p {
+            margin: 6px 0 0;
+            font-size: 16px;
+            font-weight: 400;
+            color: #C9A87C;
+        }
+
+        /* ---------- game grid ---------- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+            gap: 22px;
+        }
+
+        .card {
+            display: block;
+            text-decoration: none;
+            background: var(--cream);
+            border: 5px solid var(--bark);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 8px 0 var(--bark);
+            transition: transform 0.14s ease, box-shadow 0.14s ease;
+        }
+
+        .card:hover,
+        .card:focus-visible {
+            transform: translateY(-5px);
+            box-shadow: 0 13px 0 var(--bark), 0 16px 26px rgba(0, 0, 0, 0.4);
+        }
+
+        .card:focus-visible {
+            outline: 3px solid var(--ring-lt);
+            outline-offset: 4px;
+        }
+
+        .thumb {
+            position: relative;
+            height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 50% 40%, #F5B455 0%, #E8912D 70%);
+            border-bottom: 5px solid var(--bark);
+        }
+
+        .thumb img {
+            max-height: 105px;
+            max-width: 70%;
+        }
+
+        .badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 4px 11px;
+            border-radius: 999px;
+            background: var(--leaf);
+            border: 2.5px solid var(--bark);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+        }
+
+        .info {
+            padding: 14px 16px 16px;
+            color: var(--bark);
+        }
+
+        .info h2 {
+            margin: 0;
+            font-size: 19px;
+            font-weight: 700;
+        }
+
+        .info p {
+            margin: 4px 0 0;
+            font-size: 14px;
+            font-weight: 400;
+            color: #7A5533;
+        }
+
+        /* ---------- placeholder cards ---------- */
+        .card.soon {
+            background: rgba(243, 224, 189, 0.09);
+            border-style: dashed;
+            border-color: rgba(243, 224, 189, 0.3);
+            box-shadow: none;
+            cursor: default;
+        }
+
+        .card.soon:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        .card.soon .thumb {
+            background: rgba(0, 0, 0, 0.14);
+            border-bottom-color: rgba(243, 224, 189, 0.3);
+            font-size: 44px;
+            color: rgba(243, 224, 189, 0.28);
+        }
+
+        .card.soon .info {
+            color: rgba(243, 224, 189, 0.55);
+        }
+
+        .card.soon .info p {
+            color: rgba(243, 224, 189, 0.35);
+        }
+
+        footer {
+            margin-top: 48px;
+            padding-top: 22px;
+            border-top: 4px solid rgba(243, 224, 189, 0.16);
+            font-size: 14px;
+            color: #C9A87C;
+        }
+
+        footer a {
+            color: var(--ring-lt);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 520px) {
+            header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            header h1 {
+                font-size: 30px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="wrap">
+
+        <header>
+            <svg width="72" height="72" viewBox="0 0 46 46" aria-hidden="true">
+                <circle cx="23" cy="23" r="20" fill="#E8912D" stroke="#3E1F12" stroke-width="4" />
+                <circle cx="23" cy="23" r="13" fill="none" stroke="#3E1F12" stroke-width="2.5" />
+                <circle cx="23" cy="23" r="7" fill="none" stroke="#3E1F12" stroke-width="2.5" />
+                <circle cx="23" cy="23" r="2" fill="#3E1F12" />
+            </svg>
+            <div>
+                <h1>Alan Zirkiev</h1>
+                <p>Small browser games. Built from scratch, playable in one click.</p>
+            </div>
+        </header>
+
+        <div class="grid" id="grid"></div>
+
+        <footer>
+            Made with HTML, CSS and JavaScript ·
+            <a href="mailto:your@email.com">your@email.com</a> ·
+            <a href="https://github.com/">GitHub</a>
+        </footer>
+
+    </div>
+
+    <script>
+        /* =========================================================
+           The game list.
+           To add a new game: copy one line, change the fields.
+           Set "link" to null for a game that is not ready yet.
+           ========================================================= */
+        const GAMES = [
+            {
+                title: 'Escape the Sheep',
+                genre: 'Arcade · Survival',
+                badge: 'Play now',
+                image: 'Game_sheeps/images/lp_sheep.png',
+                link: 'Game_sheeps/sheeps.html'
+            },
+            { title: 'Coming soon', genre: 'In development', link: null },
+            { title: 'Coming soon', genre: 'In development', link: null },
+            { title: 'Coming soon', genre: 'In development', link: null }
+        ];
+
+        const grid = document.getElementById('grid');
+
+        for (const game of GAMES) {
+            // a real game is a link, an unfinished one is just a box
+            const card = document.createElement(game.link ? 'a' : 'div');
+            card.className = 'card' + (game.link ? '' : ' soon');
+            if (game.link) card.href = game.link;
+
+            const thumb = document.createElement('div');
+            thumb.className = 'thumb';
+
+            if (game.image) {
+                const img = document.createElement('img');
+                img.src = game.image;
+                img.alt = game.title;
+                img.onerror = () => img.remove();   // no picture yet — just hide it
+                thumb.appendChild(img);
+            } else {
+                thumb.textContent = '?';
+            }
+
+            if (game.badge) {
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                badge.textContent = game.badge;
+                thumb.appendChild(badge);
+            }
+
+            const info = document.createElement('div');
+            info.className = 'info';
+            info.innerHTML = '<h2></h2><p></p>';
+            info.querySelector('h2').textContent = game.title;
+            info.querySelector('p').textContent = game.genre;
+
+            card.appendChild(thumb);
+            card.appendChild(info);
+            grid.appendChild(card);
+        }
+    </script>
+
+</body>
+
+</html>

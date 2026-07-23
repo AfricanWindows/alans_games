@@ -11,7 +11,6 @@
     <style>
         :root {
             --bark: #3E1F12;
-            --wood: #A85A2A;
             --ring: #E8912D;
             --ring-lt: #F5B455;
             --cream: #F3E0BD;
@@ -30,8 +29,8 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 16px;
-            padding: 24px;
+            gap: 14px;
+            padding: 18px;
             font-family: 'Fredoka', 'Trebuchet MS', sans-serif;
             color: var(--cream);
             background:
@@ -42,7 +41,7 @@
 
         .topbar {
             width: 100%;
-            max-width: 680px;
+            max-width: 940px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -83,7 +82,7 @@
 
         .title h1 {
             margin: 0;
-            font-size: 30px;
+            font-size: 28px;
             font-weight: 700;
             color: var(--ring-lt);
             text-shadow: 3px 3px 0 var(--bark);
@@ -132,12 +131,14 @@
             border-radius: 14px;
             background: #EFD9AE;
             max-width: 100%;
+            outline: none;
         }
 
         .hint {
             font-size: 14px;
             font-weight: 500;
             color: #C9A87C;
+            text-align: center;
         }
 
         .hint b {
@@ -150,9 +151,9 @@
 <body>
 
     <div class="topbar">
-        <a class="back" href="menu.html">&larr; All games</a>
+        <a class="back" href="../menu.html">&larr; All games</a>
         <div class="title">
-            <svg width="40" height="40" viewBox="0 0 46 46" aria-hidden="true">
+            <svg width="38" height="38" viewBox="0 0 46 46" aria-hidden="true">
                 <circle cx="23" cy="23" r="20" fill="#E8912D" stroke="#3E1F12" stroke-width="4" />
                 <circle cx="23" cy="23" r="13" fill="none" stroke="#3E1F12" stroke-width="2.5" />
                 <circle cx="23" cy="23" r="7" fill="none" stroke="#3E1F12" stroke-width="2.5" />
@@ -168,54 +169,75 @@
             <div id="timer">0.0s</div>
             <div id="best">best 0.0s</div>
         </div>
-        <canvas id="game" width="640" height="420"></canvas>
+        <canvas id="game" width="900" height="560" tabindex="0"></canvas>
     </div>
 
-    <div class="hint"><b>W A S D</b> to move · <b>R</b> to restart · apples restore a heart</div>
+    <div class="hint">
+        <b>W A S D</b> or arrows to move · <b>R</b> to restart · apples restore a heart · <b>H</b> shows hitboxes
+    </div>
 
     <script>
         /* =========================================================
            1. SETTINGS — tweak these numbers to change the game
            ========================================================= */
         const SETTINGS = {
-            playerSpeed: 4.2,
-            playerSize: 38,
-            sheepSize: 34,
-            appleSize: 28,
+            playerSpeed: 5.0,
+            playerSize: 52,
+            sheepSize: 54,
+            appleSize: 40,
 
-            startHearts: 3,     // hearts at the start of a run
-            maxHearts: 3,     // apples stop healing above this
+            // Hitbox size as a share of the sprite.
+            // Lower = more forgiving. Press H in game to see the circles.
+            playerHitbox: 0.55,
+            sheepHitbox: 0.70,
+            appleHitbox: 0.85,   // generous, picking up should feel easy
 
-            invulnMs: 500,  // invulnerability after a hit, milliseconds
-            blinkMs: 110,   // white blink speed while invulnerable
+            startHearts: 3,      // hearts at the start of a run
+            maxHearts: 3,      // apples stop healing above this
 
-            sheepSpeed: 2.0,   // sheep speed at the start
-            sheepAccel: 0.05,  // extra speed per second survived
-            sheepDelay: 80,    // frames between sheep at the start
-            sheepDelayMin: 22,    // fastest possible spawn rate
+            invulnMs: 900,    // invulnerability after a hit, milliseconds
+            blinkMs: 110,    // white blink speed while invulnerable
 
-            appleEvery: 380,   // frames between apples (~6 seconds)
-            appleLife: 480    // how long an apple stays on the field
+            sheepSpeed: 2.4,    // sheep speed at the start
+            sheepAccel: 0.05,   // extra speed per second survived
+            sheepDelay: 80,     // frames between sheep at the start
+            sheepDelayMin: 22,     // fastest possible spawn rate
+
+            appleEvery: 380,    // frames between apples (~6 seconds)
+            appleLife: 480     // how long an apple stays on the field
+        };
+
+        /* =========================================================
+           1b. IMAGE FILE NAMES
+           Change these lines if your files are named differently.
+           Paths are relative to this html file.
+           ========================================================= */
+        const IMAGE_FILES = {
+            human: 'images/lp_farmer.png',
+            sheep: 'images/lp_sheep.png',
+            apple: 'images/lp_apple.png'
         };
 
         /* =========================================================
            2. IMAGES
-           Put the files next to this page:
-           images/human.png, images/sheep.png, images/apple.png
-           Missing files are fine — the game falls back to shapes.
+           A missing file is not an error — the game draws a simple
+           shape instead, so it always runs.
            ========================================================= */
         function loadImage(src) {
             const img = new Image();
             img.onload = () => img.ready = true;
-            img.onerror = () => img.ready = false;
+            img.onerror = () => {
+                img.ready = false;
+                console.warn('Image not found: ' + src + ' — using a fallback shape');
+            };
             img.src = src;
             return img;
         }
 
         const IMAGES = {
-            human: loadImage('images/human.png'),
-            sheep: loadImage('images/sheep.png'),
-            apple: loadImage('images/apple.png')
+            human: loadImage(IMAGE_FILES.human),
+            sheep: loadImage(IMAGE_FILES.sheep),
+            apple: loadImage(IMAGE_FILES.apple)
         };
 
         // White copy of a sprite, used for the damage blink
@@ -243,8 +265,10 @@
         const bestEl = document.getElementById('best');
 
         const player = {
-            x: 300, y: 190,
+            x: canvas.width / 2,
+            y: canvas.height / 2,
             size: SETTINGS.playerSize,
+            hitbox: SETTINGS.playerHitbox,
             hp: SETTINGS.startHearts,
             invulnUntil: 0,   // timestamp until which hits are ignored
             facing: 1         // 1 = facing right, -1 = facing left
@@ -253,22 +277,58 @@
         let sheep = [];
         let apples = [];
         let alive = true;
+        let paused = false;
+        let pausedAt = 0;
         let startTime = Date.now();
         let survived = 0;
         let best = 0;
         let sheepTimer = 0;
         let appleTimer = 0;
+        let showHitboxes = false;
 
         /* =========================================================
            4. INPUT
+           The page must have keyboard focus, otherwise key presses
+           go somewhere else. Clicking the canvas takes focus back.
            ========================================================= */
         const keys = {};
-        document.addEventListener('keydown', e => {
+
+        window.addEventListener('keydown', e => {
             const k = e.key.toLowerCase();
             keys[k] = true;
             if (k === 'r') restart();
+            if (k === 'h') showHitboxes = !showHitboxes;
+            // stop arrow keys from scrolling the page
+            if (k.startsWith('arrow')) e.preventDefault();
         });
-        document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        function pauseGame() {
+            if (paused) return;
+            paused = true;
+            pausedAt = Date.now();
+            for (const k in keys) keys[k] = false;   // drop stuck keys
+        }
+
+        function resumeGame() {
+            if (!paused) return;
+            startTime += Date.now() - pausedAt;      // the pause does not count as time survived
+            paused = false;
+        }
+
+        // Pause when the window loses focus, resume when it comes back
+        window.addEventListener('blur', pauseGame);
+        window.addEventListener('focus', resumeGame);
+
+        canvas.addEventListener('mousedown', () => {
+            canvas.focus();
+            resumeGame();
+        });
+
+        // Live Server opens the page with focus still in the editor or address bar
+        if (!document.hasFocus()) pauseGame();
+        window.addEventListener('load', () => canvas.focus());
 
         /* =========================================================
            5. SHEEP AND APPLES
@@ -290,26 +350,33 @@
             sheep.push({
                 x: c.x, y: c.y,
                 size: SETTINGS.sheepSize,
+                hitbox: SETTINGS.sheepHitbox,
                 vx: (dx / len) * speed,
                 vy: (dy / len) * speed
             });
         }
 
         function spawnApple() {
-            const m = 40; // keep apples away from the walls
+            const m = 50; // keep apples away from the walls
             apples.push({
                 x: m + Math.random() * (canvas.width - m * 2),
                 y: m + Math.random() * (canvas.height - m * 2),
                 size: SETTINGS.appleSize,
+                hitbox: SETTINGS.appleHitbox,
                 life: SETTINGS.appleLife
             });
         }
 
+        /* Circle collision.
+           x and y are the centre of every object now, so the distance
+           between two centres is compared to the sum of the radii. */
+        function radiusOf(obj) {
+            return (obj.size / 2) * obj.hitbox;
+        }
+
         function isTouching(a, b) {
-            return a.x < b.x + b.size &&
-                a.x + a.size > b.x &&
-                a.y < b.y + b.size &&
-                a.y + a.size > b.y;
+            const dist = Math.hypot(a.x - b.x, a.y - b.y);
+            return dist < radiusOf(a) + radiusOf(b);
         }
 
         /* =========================================================
@@ -318,12 +385,13 @@
         function restart() {
             sheep = [];
             apples = [];
-            player.x = 300;
-            player.y = 190;
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
             player.hp = SETTINGS.startHearts;
             player.invulnUntil = 0;
             alive = true;
             startTime = Date.now();
+            if (paused) pausedAt = startTime;
             sheepTimer = 0;
             appleTimer = 0;
             drawHearts();
@@ -340,16 +408,16 @@
         }
 
         function update() {
-            if (!alive) return;
+            if (!alive || paused) return;
             const now = Date.now();
             survived = (now - startTime) / 1000;
 
             // --- movement, normalised so diagonals are not faster ---
             let dx = 0, dy = 0;
-            if (keys['w']) dy -= 1;
-            if (keys['s']) dy += 1;
-            if (keys['a']) dx -= 1;
-            if (keys['d']) dx += 1;
+            if (keys['w'] || keys['arrowup']) dy -= 1;
+            if (keys['s'] || keys['arrowdown']) dy += 1;
+            if (keys['a'] || keys['arrowleft']) dx -= 1;
+            if (keys['d'] || keys['arrowright']) dx += 1;
 
             const len = Math.hypot(dx, dy);
             if (len > 0) {
@@ -358,8 +426,10 @@
                 if (dx !== 0) player.facing = dx > 0 ? 1 : -1;
             }
 
-            player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
-            player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+            // keep the player inside the field (x, y are the centre)
+            const half = player.size / 2;
+            player.x = Math.max(half, Math.min(canvas.width - half, player.x));
+            player.y = Math.max(half, Math.min(canvas.height - half, player.y));
 
             // --- spawn sheep, faster over time ---
             sheepTimer++;
@@ -373,8 +443,8 @@
             // --- move sheep, drop the ones that left the field ---
             for (const s of sheep) { s.x += s.vx; s.y += s.vy; }
             sheep = sheep.filter(s =>
-                s.x > -120 && s.x < canvas.width + 120 &&
-                s.y > -120 && s.y < canvas.height + 120
+                s.x > -150 && s.x < canvas.width + 150 &&
+                s.y > -150 && s.y < canvas.height + 150
             );
 
             // --- apples expire ---
@@ -416,14 +486,14 @@
            7. DRAWING
            ========================================================= */
 
-        // Draws the sprite if it loaded, otherwise the fallback shape
+        // Draws the sprite centred on obj.x / obj.y
         function drawSprite(img, obj, options = {}) {
             const { flip = 1, white = false } = options;
 
             if (img.ready) {
                 const src = white ? whiteVersion(img) : img;
                 ctx.save();
-                ctx.translate(obj.x + obj.size / 2, obj.y + obj.size / 2);
+                ctx.translate(obj.x, obj.y);
                 ctx.scale(flip, 1);
                 ctx.drawImage(src, -obj.size / 2, -obj.size / 2, obj.size, obj.size);
                 ctx.restore();
@@ -432,13 +502,32 @@
             }
         }
 
+        // Simple circle used when a sprite file is missing
+        function fallbackCircle(obj, fill) {
+            ctx.fillStyle = fill;
+            ctx.strokeStyle = '#3E1F12';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(obj.x, obj.y, obj.size / 2 - 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function drawHitbox(obj, color) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(obj.x, obj.y, radiusOf(obj), 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
         function drawField() {
             ctx.fillStyle = '#EFD9AE';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             ctx.strokeStyle = 'rgba(168, 90, 42, 0.13)';
             ctx.lineWidth = 2;
-            for (let y = 30; y < canvas.height; y += 42) {
+            for (let y = 34; y < canvas.height; y += 46) {
                 ctx.beginPath();
                 ctx.moveTo(0, y);
                 ctx.lineTo(canvas.width, y);
@@ -446,40 +535,34 @@
             }
         }
 
+        function centerText(big, small) {
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#F5B455';
+            ctx.font = '700 44px Fredoka, sans-serif';
+            ctx.fillText(big, canvas.width / 2, canvas.height / 2 - 6);
+
+            ctx.fillStyle = '#F3E0BD';
+            ctx.font = '500 19px Fredoka, sans-serif';
+            ctx.fillText(small, canvas.width / 2, canvas.height / 2 + 32);
+        }
+
         function draw() {
             drawField();
 
             // ---- apples ----
             for (const a of apples) {
-                // blink shortly before they disappear
-                if (a.life < 90 && Math.floor(a.life / 8) % 2 === 0) continue;
-                drawSprite(IMAGES.apple, a, {
-                    fallback: () => {
-                        ctx.fillStyle = '#D94A3D';
-                        ctx.strokeStyle = '#3E1F12';
-                        ctx.lineWidth = 3;
-                        ctx.beginPath();
-                        ctx.arc(a.x + a.size / 2, a.y + a.size / 2, a.size / 2 - 2, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.stroke();
-                    }
-                });
+                if (a.life < 90 && Math.floor(a.life / 8) % 2 === 0) continue;  // blink before vanishing
+                drawSprite(IMAGES.apple, a, { fallback: () => fallbackCircle(a, '#D94A3D') });
+                if (showHitboxes) drawHitbox(a, '#2E8B57');
             }
 
             // ---- sheep, mirrored to match their direction ----
             for (const s of sheep) {
                 drawSprite(IMAGES.sheep, s, {
                     flip: s.vx > 0 ? 1 : -1,
-                    fallback: () => {
-                        ctx.fillStyle = '#F7F1E4';
-                        ctx.strokeStyle = '#3E1F12';
-                        ctx.lineWidth = 3;
-                        ctx.beginPath();
-                        ctx.roundRect(s.x, s.y, s.size, s.size, 10);
-                        ctx.fill();
-                        ctx.stroke();
-                    }
+                    fallback: () => fallbackCircle(s, '#F7F1E4')
                 });
+                if (showHitboxes) drawHitbox(s, '#D94A3D');
             }
 
             // ---- player ----
@@ -490,31 +573,20 @@
             drawSprite(IMAGES.human, player, {
                 flip: player.facing,
                 white: whitePhase,
-                fallback: (white) => {
-                    ctx.fillStyle = white ? '#FFFFFF' : (alive ? '#2E8B57' : '#8A7A63');
-                    ctx.strokeStyle = '#3E1F12';
-                    ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    ctx.roundRect(player.x, player.y, player.size, player.size, 8);
-                    ctx.fill();
-                    ctx.stroke();
-                }
+                fallback: (white) => fallbackCircle(player, white ? '#FFFFFF' : '#2E8B57')
             });
+            if (showHitboxes) drawHitbox(player, '#1D6FB8');
 
-            // ---- game over screen ----
+            // ---- overlays ----
             if (!alive) {
                 ctx.fillStyle = 'rgba(62, 31, 18, 0.82)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                ctx.textAlign = 'center';
-                ctx.fillStyle = '#F5B455';
-                ctx.font = '700 40px Fredoka, sans-serif';
-                ctx.fillText('The sheep win', canvas.width / 2, canvas.height / 2 - 6);
-
-                ctx.fillStyle = '#F3E0BD';
-                ctx.font = '500 18px Fredoka, sans-serif';
-                ctx.fillText('Survived ' + survived.toFixed(1) + 's — press R to try again',
-                    canvas.width / 2, canvas.height / 2 + 30);
+                centerText('The sheep win',
+                    'Survived ' + survived.toFixed(1) + 's — press R to try again');
+            } else if (paused) {
+                ctx.fillStyle = 'rgba(62, 31, 18, 0.72)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                centerText('Paused', 'Click the field to play');
             }
         }
 
