@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Побег от овец</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            background: #14171f;
+            color: #cfd4e0;
+            font-family: monospace;
+        }
+
+        canvas {
+            background: #1d212c;
+            border: 2px solid #2e3444;
+            border-radius: 4px;
+        }
+
+        #hud {
+            font-size: 18px;
+            letter-spacing: 1px;
+        }
+
+        #hint {
+            font-size: 13px;
+            color: #6b7385;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="hud">Время: 0.0 с &nbsp;|&nbsp; Рекорд: 0.0 с</div>
+    <canvas id="game" width="600" height="400"></canvas>
+    <div id="hint">W A S D — движение &nbsp;·&nbsp; R — заново</div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const hud = document.getElementById('hud');
+
+        // ---- игрок ----
+        const player = { x: 285, y: 185, size: 26, speed: 4 };
+
+        // ---- состояние игры ----
+        let sheep = [];          // все овцы, которые сейчас на экране
+        let alive = true;
+        let startTime = Date.now();
+        let survived = 0;        // сколько секунд продержался
+        let best = 0;            // рекорд
+        let spawnTimer = 0;      // счётчик кадров до следующей овцы
+
+        // ---- клавиши ----
+        const keys = {};
+        document.addEventListener('keydown', e => {
+            keys[e.key.toLowerCase()] = true;
+            if (e.key.toLowerCase() === 'r') restart();
+        });
+        document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        // ---- углы, из которых выходят овцы ----
+        const corners = [
+            { x: 0, y: 0 },
+            { x: canvas.width, y: 0 },
+            { x: 0, y: canvas.height },
+            { x: canvas.width, y: canvas.height }
+        ];
+
+        // ---- создать одну овцу ----
+        function spawnSheep() {
+            const corner = corners[Math.floor(Math.random() * 4)];
+            const size = 22;
+
+            // направление: из угла в сторону игрока
+            const dx = player.x - corner.x;
+            const dy = player.y - corner.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+
+            // скорость растёт со временем: чем дольше живёшь, тем быстрее овцы
+            const speed = 2 + survived * 0.05;
+
+            sheep.push({
+                x: corner.x,
+                y: corner.y,
+                size: size,
+                vx: (dx / length) * speed,
+                vy: (dy / length) * speed
+            });
+        }
+
+        // ---- столкновение двух квадратов ----
+        function isTouching(a, b) {
+            return a.x < b.x + b.size &&
+                a.x + a.size > b.x &&
+                a.y < b.y + b.size &&
+                a.y + a.size > b.y;
+        }
+
+        function restart() {
+            sheep = [];
+            player.x = 285;
+            player.y = 185;
+            alive = true;
+            startTime = Date.now();
+            spawnTimer = 0;
+        }
+
+        function update() {
+            if (!alive) return;
+
+            survived = (Date.now() - startTime) / 1000;
+
+            // движение игрока: сначала собираем направление, потом двигаем
+            let dirX = 0, dirY = 0;
+            if (keys['w']) dirY -= 1;
+            if (keys['s']) dirY += 1;
+            if (keys['a']) dirX -= 1;
+            if (keys['d']) dirX += 1;
+
+            // по диагонали длина вектора = 1.41, поэтому делим на неё —
+            // тогда скорость одинаковая во все стороны
+            const len = Math.sqrt(dirX * dirX + dirY * dirY);
+            if (len > 0) {
+                player.x += (dirX / len) * player.speed;
+                player.y += (dirY / len) * player.speed;
+            }
+
+            player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+            player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+
+            // новая овца: интервал сокращается со временем, но не меньше 20 кадров
+            spawnTimer++;
+            const delay = Math.max(20, 80 - survived * 2);
+            if (spawnTimer >= delay) {
+                spawnSheep();
+                spawnTimer = 0;
+            }
+
+            // двигаем овец и убираем улетевших за экран
+            for (const s of sheep) {
+                s.x += s.vx;
+                s.y += s.vy;
+            }
+            sheep = sheep.filter(s =>
+                s.x > -100 && s.x < canvas.width + 100 &&
+                s.y > -100 && s.y < canvas.height + 100
+            );
+
+            // проверка касания
+            for (const s of sheep) {
+                if (isTouching(player, s)) {
+                    alive = false;
+                    if (survived > best) best = survived;
+                }
+            }
+
+            hud.textContent = 'Время: ' + survived.toFixed(1) +
+                ' с | Рекорд: ' + best.toFixed(1) + ' с';
+        }
+
+        // ---- рисуем овцу: белое тело + тёмная голова ----
+        function drawSheep(s) {
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(s.x, s.y, s.size, s.size);
+            ctx.fillStyle = '#2b2b33';
+            ctx.fillRect(s.x + s.size * 0.6, s.y + s.size * 0.15, s.size * 0.35, s.size * 0.35);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = alive ? '#4ade80' : '#6b7385';
+            ctx.fillRect(player.x, player.y, player.size, player.size);
+
+            for (const s of sheep) drawSheep(s);
+
+            if (!alive) {
+                ctx.fillStyle = 'rgba(20, 23, 31, 0.8)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#ffd166';
+                ctx.font = 'bold 30px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('Овцы победили', canvas.width / 2, canvas.height / 2 - 10);
+
+                ctx.fillStyle = '#cfd4e0';
+                ctx.font = '16px monospace';
+                ctx.fillText('Продержался ' + survived.toFixed(1) + ' с — нажми R',
+                    canvas.width / 2, canvas.height / 2 + 24);
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+
+</body>
+
+</html>
