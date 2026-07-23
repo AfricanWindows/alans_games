@@ -254,7 +254,7 @@
                     <div id="best">best 0.0s</div>
                 </div>
             </div>
-            <canvas id="game" width="900" height="560" tabindex="0"></canvas>
+            <canvas id="game" width="1200" height="560" tabindex="0"></canvas>
         </div>
 
         <aside class="sidebar">
@@ -266,6 +266,9 @@
                 <dt><kbd class="wide">Mouse</kbd></dt>
                 <dd>Aim the pitchfork</dd>
 
+                <dt><kbd class="wide">Shift</kbd></dt>
+                <dd>Dash — untouchable for a moment</dd>
+
                 <dt><kbd>R</kbd></dt>
                 <dd>Start a new run</dd>
 
@@ -273,8 +276,9 @@
                 <dd>Show the hitboxes</dd>
             </dl>
             <p class="goal">
-                Sheep charge in from the corners. Stab them before they reach you,
-                grab apples to get a heart back, and stay alive as long as you can.
+                Sheep charge in from the corners. Stab them before they reach you
+                and grab apples to get a heart back. Red sheep shrug off the
+                pitchfork — dash out of their way instead.
             </p>
         </aside>
 
@@ -300,6 +304,18 @@
             // in the direction of the mouse. Sheep touching it die.
             forkDistance: 28,     // how far in front of the player
             forkRadius: 20,     // how wide the killing area is
+
+            // Dash on Shift. The player is untouchable while dashing,
+            // so it is the answer to anything the pitchfork cannot stop.
+            dashSpeed: 10,     // speed during the dash
+            dashMs: 100,    // how long the dash lasts
+            dashCooldown: 900,    // wait before the next dash
+
+            // Red sheep: cannot be killed, only dodged.
+            redAfter: 20,      // seconds before the first one can appear
+            redChance: 0.05,    // share of sheep that are red
+            redSizeMul: 1.35,   // bigger than a normal sheep
+            redSpeedMul: 0.6,    // and slower
 
             startHearts: 3,      // hearts at the start of a run
             maxHearts: 3,      // apples stop healing above this
@@ -371,18 +387,22 @@
             apple: loadImage(IMAGE_FILES.apple)
         };
 
-        // White copy of a sprite, used for the damage blink
-        function whiteVersion(img) {
-            if (img.whiteCache) return img.whiteCache;
+        // A recoloured copy of a sprite: white for the damage blink,
+        // red for the sheep that cannot be killed. Built once per colour.
+        function tintedVersion(img, color) {
+            img.tintCache = img.tintCache || {};
+            if (img.tintCache[color]) return img.tintCache[color];
+
             const c = document.createElement('canvas');
             c.width = img.width;
             c.height = img.height;
             const cx = c.getContext('2d');
             cx.drawImage(img, 0, 0);
             cx.globalCompositeOperation = 'source-atop';  // paint only the drawing itself
-            cx.fillStyle = '#ffffff';
+            cx.fillStyle = color;
             cx.fillRect(0, 0, c.width, c.height);
-            img.whiteCache = c;
+
+            img.tintCache[color] = c;
             return c;
         }
 
@@ -403,7 +423,10 @@
             hitbox: SETTINGS.playerHitbox,
             hp: SETTINGS.startHearts,
             invulnUntil: 0,   // timestamp until which hits are ignored
-            angle: 0          // radians, points at the mouse
+            angle: 0,         // radians, points at the mouse
+            dashUntil: 0,     // dashing while now is below this
+            dashReadyAt: 0,   // the next dash is allowed from this moment
+            dashAngle: 0      // the direction the dash is going
         };
 
         // The killing area in front of the player. Rebuilt every frame.
@@ -416,6 +439,7 @@
         let sheep = [];
         let apples = [];
         let puffs = [];        // small effect when a sheep is removed
+        let ghosts = [];       // fading copies of the player left by a dash
         let started = false;   // the run begins on the first click or key press
         let alive = true;
         let startTime = 0;
@@ -447,11 +471,37 @@
             startGame();
             if (e.code === 'KeyR') restart();
             if (e.code === 'KeyH') showHitboxes = !showHitboxes;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') tryDash();
             // Space and the arrows scroll the page by default — not here
             if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
         });
 
         window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // Which way the movement keys are pointing right now
+        function inputDirection() {
+            let dx = 0, dy = 0;
+            if (keys['KeyW'] || keys['ArrowUp']) dy -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) dy += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) dx -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
+            return { dx, dy };
+        }
+
+        function tryDash() {
+            if (!started || !alive) return;
+            const now = Date.now();
+            if (now < player.dashReadyAt) return;      // still cooling down
+
+            // dash where you run, or where you aim when standing still
+            const { dx, dy } = inputDirection();
+            player.dashAngle = (dx === 0 && dy === 0)
+                ? player.angle
+                : Math.atan2(dy, dx);
+
+            player.dashUntil = now + SETTINGS.dashMs;
+            player.dashReadyAt = now + SETTINGS.dashCooldown;
+        }
 
         // Mouse position inside the canvas.
         // The canvas can be displayed smaller than its real size,
@@ -484,12 +534,20 @@
             const dx = player.x - c.x;
             const dy = player.y - c.y;
             const len = Math.hypot(dx, dy);
-            const speed = SETTINGS.sheepSpeed + survived * SETTINGS.sheepAccel;
+
+            // a red sheep shrugs off the pitchfork, so it only shows up
+            // once the player has had a moment to learn the basics
+            const red = survived > SETTINGS.redAfter && Math.random() < SETTINGS.redChance;
+
+            const size = SETTINGS.sheepSize * (red ? SETTINGS.redSizeMul : 1);
+            const speed = (SETTINGS.sheepSpeed + survived * SETTINGS.sheepAccel)
+                * (red ? SETTINGS.redSpeedMul : 1);
 
             sheep.push({
                 x: c.x, y: c.y,
-                size: SETTINGS.sheepSize,
+                size: size,
                 hitbox: SETTINGS.sheepHitbox,
+                red: red,
                 vx: (dx / len) * speed,
                 vy: (dy / len) * speed,
                 angle: Math.atan2(dy, dx)   // the sheep faces where it runs
@@ -524,10 +582,13 @@
             sheep = [];
             apples = [];
             puffs = [];
+            ghosts = [];
             player.x = canvas.width / 2;
             player.y = canvas.height / 2;
             player.hp = SETTINGS.startHearts;
             player.invulnUntil = 0;
+            player.dashUntil = 0;
+            player.dashReadyAt = 0;
             alive = true;
             started = true;
             startTime = Date.now();
@@ -552,22 +613,28 @@
             // effects keep animating even on the start and game over screens
             for (const p of puffs) p.life--;
             puffs = puffs.filter(p => p.life > 0);
+            for (const g of ghosts) g.life--;
+            ghosts = ghosts.filter(g => g.life > 0);
 
             if (!started || !alive) return;
             const now = Date.now();
             survived = (now - startTime) / 1000;
 
-            // --- movement, normalised so diagonals are not faster ---
-            let dx = 0, dy = 0;
-            if (keys['KeyW'] || keys['ArrowUp']) dy -= 1;
-            if (keys['KeyS'] || keys['ArrowDown']) dy += 1;
-            if (keys['KeyA'] || keys['ArrowLeft']) dx -= 1;
-            if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
+            const dashing = now < player.dashUntil;
 
-            const len = Math.hypot(dx, dy);
-            if (len > 0) {
-                player.x += (dx / len) * SETTINGS.playerSpeed;
-                player.y += (dy / len) * SETTINGS.playerSpeed;
+            if (dashing) {
+                // during a dash the keys are ignored, the direction is locked in
+                player.x += Math.cos(player.dashAngle) * SETTINGS.dashSpeed;
+                player.y += Math.sin(player.dashAngle) * SETTINGS.dashSpeed;
+                ghosts.push({ x: player.x, y: player.y, size: player.size, angle: player.angle, life: 12 });
+            } else {
+                // normal movement, normalised so diagonals are not faster
+                const { dx, dy } = inputDirection();
+                const len = Math.hypot(dx, dy);
+                if (len > 0) {
+                    player.x += (dx / len) * SETTINGS.playerSpeed;
+                    player.y += (dy / len) * SETTINGS.playerSpeed;
+                }
             }
 
             const half = player.size / 2;
@@ -598,9 +665,9 @@
                 s.angle = Math.atan2(s.vy, s.vx);
             }
 
-            // --- the pitchfork removes any sheep it touches ---
+            // --- the pitchfork removes any sheep it touches, except the red ones ---
             sheep = sheep.filter(s => {
-                if (isTouching(fork, s)) {
+                if (!s.red && isTouching(fork, s)) {
                     puffs.push({ x: s.x, y: s.y, life: 20 });
                     kills++;
                     killsEl.textContent = kills + ' sheep';
@@ -628,8 +695,8 @@
             }
             apples = apples.filter(a => a.life > 0);
 
-            // --- taking a hit, ignored while invulnerable ---
-            if (now > player.invulnUntil) {
+            // --- taking a hit, ignored while invulnerable or dashing ---
+            if (!dashing && now > player.invulnUntil) {
                 for (const s of sheep) {
                     if (isTouching(player, s)) {
                         player.hp--;
@@ -658,14 +725,25 @@
            The rotation already includes the sprite's starting
            direction, see SPRITE_FACING above. */
         function drawSprite(img, obj, rotation, options = {}) {
-            const { white = false } = options;
+            const { white = false, tint = null, tintAlpha = 0.55, alpha = 1 } = options;
 
             if (img.ready) {
-                const src = white ? whiteVersion(img) : img;
                 ctx.save();
+                ctx.globalAlpha = alpha;
                 ctx.translate(obj.x, obj.y);
                 ctx.rotate(rotation);
-                ctx.drawImage(src, -obj.size / 2, -obj.size / 2, obj.size, obj.size);
+
+                const half = obj.size / 2;
+                if (white) {
+                    ctx.drawImage(tintedVersion(img, '#ffffff'), -half, -half, obj.size, obj.size);
+                } else {
+                    ctx.drawImage(img, -half, -half, obj.size, obj.size);
+                    if (tint) {
+                        // the coloured copy on top keeps the shading of the drawing
+                        ctx.globalAlpha = alpha * tintAlpha;
+                        ctx.drawImage(tintedVersion(img, tint), -half, -half, obj.size, obj.size);
+                    }
+                }
                 ctx.restore();
             } else if (options.fallback) {
                 options.fallback(white);
@@ -737,10 +815,27 @@
 
             // ---- sheep, turned towards the player ----
             for (const s of sheep) {
+                if (s.red) {
+                    // a dark ring makes the unkillable ones easy to spot
+                    ctx.strokeStyle = 'rgba(217, 74, 61, 0.45)';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, s.size / 2, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
                 drawSprite(IMAGES.sheep, s, s.angle + FACING_OFFSET[SPRITE_FACING.sheep], {
-                    fallback: () => fallbackCircle(s, '#F7F1E4')
+                    tint: s.red ? '#C0392B' : null,
+                    fallback: () => fallbackCircle(s, s.red ? '#C0392B' : '#F7F1E4')
                 });
                 if (showHitboxes) drawHitbox(s, '#D94A3D');
+            }
+
+            // ---- the trail left behind by a dash ----
+            for (const g of ghosts) {
+                drawSprite(IMAGES.human, g, g.angle + FACING_OFFSET[SPRITE_FACING.human], {
+                    alpha: (g.life / 12) * 0.35
+                });
             }
 
             // ---- player ----
@@ -756,6 +851,18 @@
             if (showHitboxes) {
                 drawHitbox(player, '#1D6FB8');
                 drawHitbox(fork, '#8E44AD');
+            }
+
+            // ---- dash cooldown, drawn as an arc filling up around the player ----
+            const cooling = player.dashReadyAt - now;
+            if (cooling > 0 && alive) {
+                const done = 1 - cooling / SETTINGS.dashCooldown;   // 0 → 1
+                ctx.strokeStyle = 'rgba(62, 31, 18, 0.55)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.size * 0.62,
+                    -Math.PI / 2, -Math.PI / 2 + done * Math.PI * 2);
+                ctx.stroke();
             }
 
             // ---- overlays ----
