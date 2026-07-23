@@ -22,15 +22,21 @@
             box-sizing: border-box;
         }
 
+        /* The page never scrolls, so no key can shift the view */
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             margin: 0;
-            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 14px;
-            padding: 18px;
+            gap: 10px;
+            padding: 10px 14px;
             font-family: 'Fredoka', 'Trebuchet MS', sans-serif;
             color: var(--cream);
             background:
@@ -39,9 +45,16 @@
                 linear-gradient(180deg, #4A2716 0%, #2B160C 100%);
         }
 
+        /* game panel and the instructions side by side */
+        .stage {
+            display: flex;
+            align-items: stretch;
+            gap: 16px;
+        }
+
         .topbar {
             width: 100%;
-            max-width: 940px;
+            max-width: 1160px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -100,12 +113,18 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 20px;
+            gap: 24px;
             margin-bottom: 12px;
             padding: 0 6px;
             color: var(--bark);
             font-size: 19px;
             font-weight: 600;
+        }
+
+        .hud .right {
+            display: flex;
+            gap: 20px;
+            align-items: center;
         }
 
         .hearts {
@@ -131,19 +150,80 @@
             border-radius: 14px;
             background: #EFD9AE;
             max-width: 100%;
+            max-height: calc(100vh - 190px);
+            /* shrink instead of overflowing */
             outline: none;
+            cursor: crosshair;
         }
 
-        .hint {
-            font-size: 14px;
-            font-weight: 500;
-            color: #C9A87C;
-            text-align: center;
+        /* ---------- instructions on the right ---------- */
+        .sidebar {
+            width: 210px;
+            flex: none;
+            background: rgba(243, 224, 189, 0.07);
+            border: 4px solid rgba(243, 224, 189, 0.22);
+            border-radius: 20px;
+            padding: 16px 16px 18px;
         }
 
-        .hint b {
+        .sidebar h2 {
+            margin: 0 0 14px;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
             color: var(--ring-lt);
+        }
+
+        .sidebar dl {
+            margin: 0;
+        }
+
+        .sidebar dt {
+            margin-bottom: 5px;
+        }
+
+        .sidebar dd {
+            margin: 0 0 14px;
+            font-size: 13.5px;
+            font-weight: 400;
+            color: #C9A87C;
+        }
+
+        kbd {
+            display: inline-block;
+            margin-right: 4px;
+            padding: 3px 8px;
+            border: 2px solid var(--bark);
+            border-radius: 7px;
+            background: var(--ring);
+            color: var(--bark);
+            font-family: inherit;
+            font-size: 12.5px;
             font-weight: 600;
+            box-shadow: 0 2px 0 var(--bark);
+        }
+
+        kbd.wide {
+            background: var(--cream);
+        }
+
+        .sidebar .goal {
+            margin: 4px 0 0;
+            padding-top: 14px;
+            border-top: 3px solid rgba(243, 224, 189, 0.18);
+            font-size: 13.5px;
+            font-weight: 400;
+            line-height: 1.45;
+            color: #C9A87C;
+        }
+
+        @media (max-width: 1180px) {
+            .sidebar {
+                display: none;
+            }
+
+            /* narrow screens: the game comes first */
         }
     </style>
 </head>
@@ -163,17 +243,41 @@
         </div>
     </div>
 
-    <div class="panel">
-        <div class="hud">
-            <div class="hearts" id="hearts"></div>
-            <div id="timer">0.0s</div>
-            <div id="best">best 0.0s</div>
-        </div>
-        <canvas id="game" width="900" height="560" tabindex="0"></canvas>
-    </div>
+    <div class="stage">
 
-    <div class="hint">
-        <b>W A S D</b> or arrows to move · <b>R</b> to restart · apples restore a heart · <b>H</b> shows hitboxes
+        <div class="panel">
+            <div class="hud">
+                <div class="hearts" id="hearts"></div>
+                <div class="right">
+                    <div id="kills">0 sheep</div>
+                    <div id="timer">0.0s</div>
+                    <div id="best">best 0.0s</div>
+                </div>
+            </div>
+            <canvas id="game" width="900" height="560" tabindex="0"></canvas>
+        </div>
+
+        <aside class="sidebar">
+            <h2>Controls</h2>
+            <dl>
+                <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt>
+                <dd>Move around the field</dd>
+
+                <dt><kbd class="wide">Mouse</kbd></dt>
+                <dd>Aim the pitchfork</dd>
+
+                <dt><kbd>R</kbd></dt>
+                <dd>Start a new run</dd>
+
+                <dt><kbd>H</kbd></dt>
+                <dd>Show the hitboxes</dd>
+            </dl>
+            <p class="goal">
+                Sheep charge in from the corners. Stab them before they reach you,
+                grab apples to get a heart back, and stay alive as long as you can.
+            </p>
+        </aside>
+
     </div>
 
     <script>
@@ -191,6 +295,11 @@
             playerHitbox: 0.55,
             sheepHitbox: 0.70,
             appleHitbox: 0.85,   // generous, picking up should feel easy
+
+            // The pitchfork: a circle placed in front of the player,
+            // in the direction of the mouse. Sheep touching it die.
+            forkDistance: 28,     // how far in front of the player
+            forkRadius: 20,     // how wide the killing area is
 
             startHearts: 3,      // hearts at the start of a run
             maxHearts: 3,      // apples stop healing above this
@@ -216,6 +325,28 @@
             human: 'images/lp_farmer.png',
             sheep: 'images/lp_sheep.png',
             apple: 'images/lp_apple.png'
+        };
+
+        /* =========================================================
+           1c. WHICH WAY THE SPRITES POINT
+           Every sprite is drawn once, pointing somewhere. The game
+           rotates it from there, so it needs to know the starting
+           direction. 'down' means the front of the drawing (the
+           pitchfork) points at the bottom of the image.
+           If a sprite looks turned by 90 degrees in game,
+           change its word here — nothing else.
+           ========================================================= */
+        const SPRITE_FACING = {
+            human: 'down',   // the pitchfork points down in lp_farmer.png
+            sheep: 'up'      // the sheep's head is at the top of lp_sheep.png
+        };
+
+        // How much extra rotation each starting direction needs
+        const FACING_OFFSET = {
+            right: 0,
+            down: -Math.PI / 2,
+            left: Math.PI,
+            up: Math.PI / 2
         };
 
         /* =========================================================
@@ -263,6 +394,7 @@
         const heartsEl = document.getElementById('hearts');
         const timerEl = document.getElementById('timer');
         const bestEl = document.getElementById('best');
+        const killsEl = document.getElementById('kills');
 
         const player = {
             x: canvas.width / 2,
@@ -271,63 +403,70 @@
             hitbox: SETTINGS.playerHitbox,
             hp: SETTINGS.startHearts,
             invulnUntil: 0,   // timestamp until which hits are ignored
-            facing: 1         // 1 = facing right, -1 = facing left
+            angle: 0          // radians, points at the mouse
+        };
+
+        // The killing area in front of the player. Rebuilt every frame.
+        const fork = {
+            x: 0, y: 0,
+            size: SETTINGS.forkRadius * 2,
+            hitbox: 1
         };
 
         let sheep = [];
         let apples = [];
+        let puffs = [];        // small effect when a sheep is removed
+        let started = false;   // the run begins on the first click or key press
         let alive = true;
-        let paused = false;
-        let pausedAt = 0;
-        let startTime = Date.now();
+        let startTime = 0;
         let survived = 0;
         let best = 0;
+        let kills = 0;
         let sheepTimer = 0;
         let appleTimer = 0;
         let showHitboxes = false;
 
+        const mouse = { x: canvas.width / 2 + 100, y: canvas.height / 2 };
+
         /* =========================================================
            4. INPUT
-           The page must have keyboard focus, otherwise key presses
-           go somewhere else. Clicking the canvas takes focus back.
+           e.code is the physical key on the keyboard, so the game
+           works on any keyboard layout. e.key would give the letter
+           the layout produces, which breaks outside English.
            ========================================================= */
         const keys = {};
 
+        function startGame() {
+            if (started) return;
+            started = true;
+            startTime = Date.now();
+        }
+
         window.addEventListener('keydown', e => {
-            const k = e.key.toLowerCase();
-            keys[k] = true;
-            if (k === 'r') restart();
-            if (k === 'h') showHitboxes = !showHitboxes;
-            // stop arrow keys from scrolling the page
-            if (k.startsWith('arrow')) e.preventDefault();
+            keys[e.code] = true;
+            startGame();
+            if (e.code === 'KeyR') restart();
+            if (e.code === 'KeyH') showHitboxes = !showHitboxes;
+            // Space and the arrows scroll the page by default — not here
+            if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
         });
 
-        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+        window.addEventListener('keyup', e => keys[e.code] = false);
 
-        function pauseGame() {
-            if (paused) return;
-            paused = true;
-            pausedAt = Date.now();
-            for (const k in keys) keys[k] = false;   // drop stuck keys
-        }
-
-        function resumeGame() {
-            if (!paused) return;
-            startTime += Date.now() - pausedAt;      // the pause does not count as time survived
-            paused = false;
-        }
-
-        // Pause when the window loses focus, resume when it comes back
-        window.addEventListener('blur', pauseGame);
-        window.addEventListener('focus', resumeGame);
+        // Mouse position inside the canvas.
+        // The canvas can be displayed smaller than its real size,
+        // so the coordinates are scaled back to game units.
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            mouse.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        });
 
         canvas.addEventListener('mousedown', () => {
-            canvas.focus();
-            resumeGame();
+            canvas.focus();   // makes sure the keyboard talks to the game
+            startGame();
         });
 
-        // Live Server opens the page with focus still in the editor or address bar
-        if (!document.hasFocus()) pauseGame();
         window.addEventListener('load', () => canvas.focus());
 
         /* =========================================================
@@ -352,7 +491,8 @@
                 size: SETTINGS.sheepSize,
                 hitbox: SETTINGS.sheepHitbox,
                 vx: (dx / len) * speed,
-                vy: (dy / len) * speed
+                vy: (dy / len) * speed,
+                angle: Math.atan2(dy, dx)   // the sheep faces where it runs
             });
         }
 
@@ -367,16 +507,14 @@
             });
         }
 
-        /* Circle collision.
-           x and y are the centre of every object now, so the distance
-           between two centres is compared to the sum of the radii. */
+        /* Circle collision: compare the distance between two centres
+           with the sum of the two radii. */
         function radiusOf(obj) {
             return (obj.size / 2) * obj.hitbox;
         }
 
         function isTouching(a, b) {
-            const dist = Math.hypot(a.x - b.x, a.y - b.y);
-            return dist < radiusOf(a) + radiusOf(b);
+            return Math.hypot(a.x - b.x, a.y - b.y) < radiusOf(a) + radiusOf(b);
         }
 
         /* =========================================================
@@ -385,15 +523,18 @@
         function restart() {
             sheep = [];
             apples = [];
+            puffs = [];
             player.x = canvas.width / 2;
             player.y = canvas.height / 2;
             player.hp = SETTINGS.startHearts;
             player.invulnUntil = 0;
             alive = true;
+            started = true;
             startTime = Date.now();
-            if (paused) pausedAt = startTime;
+            kills = 0;
             sheepTimer = 0;
             appleTimer = 0;
+            killsEl.textContent = '0 sheep';
             drawHearts();
         }
 
@@ -408,28 +549,38 @@
         }
 
         function update() {
-            if (!alive || paused) return;
+            // effects keep animating even on the start and game over screens
+            for (const p of puffs) p.life--;
+            puffs = puffs.filter(p => p.life > 0);
+
+            if (!started || !alive) return;
             const now = Date.now();
             survived = (now - startTime) / 1000;
 
             // --- movement, normalised so diagonals are not faster ---
             let dx = 0, dy = 0;
-            if (keys['w'] || keys['arrowup']) dy -= 1;
-            if (keys['s'] || keys['arrowdown']) dy += 1;
-            if (keys['a'] || keys['arrowleft']) dx -= 1;
-            if (keys['d'] || keys['arrowright']) dx += 1;
+            if (keys['KeyW'] || keys['ArrowUp']) dy -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) dy += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) dx -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
 
             const len = Math.hypot(dx, dy);
             if (len > 0) {
                 player.x += (dx / len) * SETTINGS.playerSpeed;
                 player.y += (dy / len) * SETTINGS.playerSpeed;
-                if (dx !== 0) player.facing = dx > 0 ? 1 : -1;
             }
 
-            // keep the player inside the field (x, y are the centre)
             const half = player.size / 2;
             player.x = Math.max(half, Math.min(canvas.width - half, player.x));
             player.y = Math.max(half, Math.min(canvas.height - half, player.y));
+
+            // --- aim at the mouse ---
+            // atan2 gives the angle from the player to the mouse, in radians
+            player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+
+            // --- place the pitchfork in front of the player ---
+            fork.x = player.x + Math.cos(player.angle) * SETTINGS.forkDistance;
+            fork.y = player.y + Math.sin(player.angle) * SETTINGS.forkDistance;
 
             // --- spawn sheep, faster over time ---
             sheepTimer++;
@@ -440,8 +591,25 @@
             appleTimer++;
             if (appleTimer >= SETTINGS.appleEvery) { spawnApple(); appleTimer = 0; }
 
-            // --- move sheep, drop the ones that left the field ---
-            for (const s of sheep) { s.x += s.vx; s.y += s.vy; }
+            // --- move sheep and keep them facing their direction ---
+            for (const s of sheep) {
+                s.x += s.vx;
+                s.y += s.vy;
+                s.angle = Math.atan2(s.vy, s.vx);
+            }
+
+            // --- the pitchfork removes any sheep it touches ---
+            sheep = sheep.filter(s => {
+                if (isTouching(fork, s)) {
+                    puffs.push({ x: s.x, y: s.y, life: 20 });
+                    kills++;
+                    killsEl.textContent = kills + ' sheep';
+                    return false;   // drop this sheep from the list
+                }
+                return true;
+            });
+
+            // --- drop the sheep that left the field ---
             sheep = sheep.filter(s =>
                 s.x > -150 && s.x < canvas.width + 150 &&
                 s.y > -150 && s.y < canvas.height + 150
@@ -486,15 +654,17 @@
            7. DRAWING
            ========================================================= */
 
-        // Draws the sprite centred on obj.x / obj.y
-        function drawSprite(img, obj, options = {}) {
-            const { flip = 1, white = false } = options;
+        /* Draws a sprite rotated to `rotation` radians.
+           The rotation already includes the sprite's starting
+           direction, see SPRITE_FACING above. */
+        function drawSprite(img, obj, rotation, options = {}) {
+            const { white = false } = options;
 
             if (img.ready) {
                 const src = white ? whiteVersion(img) : img;
                 ctx.save();
                 ctx.translate(obj.x, obj.y);
-                ctx.scale(flip, 1);
+                ctx.rotate(rotation);
                 ctx.drawImage(src, -obj.size / 2, -obj.size / 2, obj.size, obj.size);
                 ctx.restore();
             } else if (options.fallback) {
@@ -502,7 +672,6 @@
             }
         }
 
-        // Simple circle used when a sprite file is missing
         function fallbackCircle(obj, fill) {
             ctx.fillStyle = fill;
             ctx.strokeStyle = '#3E1F12';
@@ -552,14 +721,23 @@
             // ---- apples ----
             for (const a of apples) {
                 if (a.life < 90 && Math.floor(a.life / 8) % 2 === 0) continue;  // blink before vanishing
-                drawSprite(IMAGES.apple, a, { fallback: () => fallbackCircle(a, '#D94A3D') });
+                drawSprite(IMAGES.apple, a, 0, { fallback: () => fallbackCircle(a, '#D94A3D') });
                 if (showHitboxes) drawHitbox(a, '#2E8B57');
             }
 
-            // ---- sheep, mirrored to match their direction ----
+            // ---- puffs left by dead sheep ----
+            for (const p of puffs) {
+                const t = 1 - p.life / 20;            // 0 at the start, 1 at the end
+                ctx.strokeStyle = 'rgba(62, 31, 18, ' + (1 - t) * 0.7 + ')';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 10 + t * 34, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // ---- sheep, turned towards the player ----
             for (const s of sheep) {
-                drawSprite(IMAGES.sheep, s, {
-                    flip: s.vx > 0 ? 1 : -1,
+                drawSprite(IMAGES.sheep, s, s.angle + FACING_OFFSET[SPRITE_FACING.sheep], {
                     fallback: () => fallbackCircle(s, '#F7F1E4')
                 });
                 if (showHitboxes) drawHitbox(s, '#D94A3D');
@@ -570,23 +748,27 @@
             const invuln = now < player.invulnUntil;
             const whitePhase = invuln && Math.floor(now / SETTINGS.blinkMs) % 2 === 0;
 
-            drawSprite(IMAGES.human, player, {
-                flip: player.facing,
+            drawSprite(IMAGES.human, player, player.angle + FACING_OFFSET[SPRITE_FACING.human], {
                 white: whitePhase,
                 fallback: (white) => fallbackCircle(player, white ? '#FFFFFF' : '#2E8B57')
             });
-            if (showHitboxes) drawHitbox(player, '#1D6FB8');
+
+            if (showHitboxes) {
+                drawHitbox(player, '#1D6FB8');
+                drawHitbox(fork, '#8E44AD');
+            }
 
             // ---- overlays ----
-            if (!alive) {
+            if (!started) {
+                ctx.fillStyle = 'rgba(62, 31, 18, 0.72)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                centerText('Escape the Sheep', 'Click the field or press any key to start');
+            } else if (!alive) {
                 ctx.fillStyle = 'rgba(62, 31, 18, 0.82)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 centerText('The sheep win',
-                    'Survived ' + survived.toFixed(1) + 's — press R to try again');
-            } else if (paused) {
-                ctx.fillStyle = 'rgba(62, 31, 18, 0.72)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                centerText('Paused', 'Click the field to play');
+                    'Survived ' + survived.toFixed(1) + 's · ' + kills +
+                    ' sheep stopped — press R to try again');
             }
         }
 
